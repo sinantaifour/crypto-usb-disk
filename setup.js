@@ -155,24 +155,26 @@ var inputs = function() {
   }));
 
   afterCreate.then(() => {
+    var h = {}; h[FORMAT] = SEED;
+    res = merge(res, h);
     return inquirer.prompt(questionSeed);
   }).then(mergeAndRun(resolver));
 
   afterRetrieve.then(() => {
+    var questions = [];
     if (process.env.CHECKSUM) {
       print("Found checksum in the $CHECKSUM environment variable: " + chalk.bold(process.env.CHECKSUM));
-      return Promise.resolve({checksum: process.env.CHECKSUM}); // TODO: Use the CHECKSUM const.
+      var h = {}; h[CHECKSUM] = process.env.CHECKSUM;
+      res = merge(res, h);
     } else {
-      return inquirer.prompt([
+      questions = questions.concat([
         questionChecksumConfirm,
         when(questionChecksum, (answers) => {
           return answers[CHECKSUM_CONFIRM];
         }),
       ]);
     }
-  }).then(mergeAndRun(() => {
-    delete res[CHECKSUM_CONFIRM];
-    return inquirer.prompt([
+    questions = questions.concat([
       questionFormat,
       when(questionSeed, (answers) => {
         return answers[FORMAT] == SEED;
@@ -181,8 +183,10 @@ var inputs = function() {
         return answers[FORMAT] == BACKUP;
       }),
     ]);
-  })).then(mergeAndRun(() => {
+    return inquirer.prompt(questions);
+  }).then(mergeAndRun(() => {
     var n = res[NUMBER_OF_BACKUP_PIECES];
+    delete res[CHECKSUM_CONFIRM];
     delete res[NUMBER_OF_BACKUP_PIECES];
     if (n) {
       var questions = [];
