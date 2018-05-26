@@ -49,7 +49,9 @@ var inputs = function() {
 
   var mergeAndRun = function(f) {
     return function(answers) {
-      res = merge(res, answers);
+      if (answers) {
+        res = merge(res, answers);
+      }
       return f(res);
     }
   };
@@ -195,7 +197,7 @@ var inputs = function() {
       };
       return inquirer.prompt(questions);
     } else {
-      resolver(res);
+      // Continue to resolver.
     }
   })).then(mergeAndRun(resolver));
 
