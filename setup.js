@@ -205,6 +205,20 @@ var inputs = function() {
 
 };
 
+var select = function(message, options) {
+  return inquirer.prompt({
+    type: 'list',
+    name: 'question',
+    message: message,
+    choices: options.map((x, i) => { return (i + 1) + ": " + x; }),
+    filter: function(val) {
+      return parseInt(val.split(":")) - 1;
+    }
+  }).then((answers) => {
+    return answers['question'];
+  });
+};
+
 var create = function(seed) {
   var rand = progress("Collecting entropy to generate backup codes", () => {
     return crypto.randomBytes(seed.length);
@@ -275,9 +289,11 @@ var retrieveFromBackup = function(backup, checksum) {
     print("There is only one potential seed, will continue with it eventhough there is no checksum to match it against.");
     return Promise.resolve(potentialSeeds[0]);
   } else {
-    // TODO: Allow the user to select.
-    error("There is more than one potential seed. A checksum is needed to find the right one.");
-    return Promise.reject();
+    print("There is more than one potential seed. A checksum would help to find the correct one automatically.");
+    var printable = potentialSeeds.map((x) => x.toString().replace(/[^\x20-\x7E]/g, "?"));
+    return select("Select a seed (non-printable characters have been replaced):", printable).then((i) => {
+      return potentialSeeds[i];
+    });
   }
 };
 
