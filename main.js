@@ -154,8 +154,8 @@ var setup = function() {
         seed = Buffer.from(answers.seed);
       } else if (answers.format == 'backup') {
         var n = answers.backup.join("").length;
-        if (n % 2 != 0) {
-          error("The number of hexadecimal is not even");
+        if (n % 4 != 0) {
+          error("The number of hexadecimal digits is not divisible by four.");
         } else {
           var permutations = permute(answers.backup);
           var potentialSeeds = []
@@ -177,11 +177,11 @@ var setup = function() {
             }
             print(chalk.dim("Done!"));
           } else if (potentialSeeds.length == 1) {
-            print("There is only one potential seed, will continue with it eventhough there is no checksum to compare it against");
+            print("There is only one potential seed, will continue with it eventhough there is no checksum to compare it against.");
             seed = potentialSeeds[0];
           } else {
             // TODO: Allow the user to select.
-            error("There is more than one potential seed. A checksum is needed to find the right one, you must set the $CHECKSUM environment variable");
+            error("There is more than one potential seed. A checksum is needed to find the right one, you must set the $CHECKSUM environment variable.");
           }
         }
       }
@@ -194,7 +194,7 @@ var setup = function() {
       }
       resolver(seed);
     } else {
-      error("Failed to retrieve seed");
+      error("Failed to retrieve seed.");
       rejector();
     }
   });
