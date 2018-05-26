@@ -1,4 +1,5 @@
 'use strict';
+const util = require('util');
 const inquirer = require('inquirer');
 const crypto = require('crypto');
 const chalk = require('chalk');
@@ -6,6 +7,7 @@ const sha1 = require('sha1');
 const sha256 = require('sha256');
 const md5 = require('md5');
 
+const merge = function(a, b) { return Object.assign({}, a, b); };
 const printProgress = function (x) { process.stdout.write(Buffer.from(chalk.yellow(x))); };
 const print = function(x) { printProgress(x + "\n"); };
 const error = function(x) { print("Error: " + chalk.red.bold(x)); }
@@ -34,9 +36,23 @@ const calcChecksum = function(x, c) {
 var promptsForSetup = function() {
 
   var resolver, rejector;
-  var questions = [];
+  var res = {};
 
-  questions.push({
+  var when = function(question, f) {
+    return merge(question, {
+      when: f,
+    });
+  };
+
+  var fill = function(question, atts) {
+    var question = JSON.parse(JSON.stringify(question));
+    Object.getOwnPropertyNames(atts).forEach((att) => {
+      question[att] = util.format(question[att], ...atts[att]);
+    });
+    return question;
+  };
+
+  var questionAction = {
     type: 'expand',
     name: 'action',
     message: "What action are you interested in performing?",
@@ -51,10 +67,26 @@ var promptsForSetup = function() {
         name: "Retrieve a wallet that already exists",
         value: 'retrieve'
       },
-    ]
-  });
+    ],
+  };
 
-  questions.push({
+  var questionChecksumConfirm = {
+    type: 'confirm',
+    name: 'checksumConfirm',
+    message: "Do you have access to a checksum?",
+  };
+
+  var questionChecksum = {
+    type: 'input',
+    name: 'checksum',
+    message: "Enter the checksum:",
+    validate: function(value) {
+      var valid = value.match(/^[0-9a-fA-F]+$/) != null && value.length == 64;
+      return valid || "Must be a valid hexadecimal number of 64 digits";
+    },
+  };
+
+  var questionFormat = {
     type: 'expand',
     name: 'format',
     message: "What is the source of secrets that you have access to?",
@@ -70,60 +102,86 @@ var promptsForSetup = function() {
         value: 'backup'
       },
     ],
-    when: function(answers) {
-      return answers.action != 'create';
-    }
-  });
+  };
 
-  questions.push({
+  var questionSeed = {
     type: 'input',
     name: 'seed',
     message: "Enter the seed (a memorized string):",
-    when: function(answers) {
-      return answers.action == 'create' || (answers.action == 'retrieve' && answers.format == 'seed');
-    }
-  });
+  };
 
-  questions.push({
+  var questionNumberOfBackupPieces = {
     type: 'input',
-    name: 'numberOfBackupCodes',
+    name: 'numberOfBackupPieces',
     message: "How many backup code pieces do you have?",
-    when: function(answers) {
-      return answers.format == 'backup';
-    },
     validate: function(value) {
       var number = parseInt(value);
       var valid = !isNaN(number) && number > 0;
       return valid || "Must be a positive integer";
     },
-    filter: Number
-  });
+    filter: Number,
+  };
 
-  inquirer.prompt(questions).then(function(answers) {
-    answers.format = answers.format || 'seed'; // Make sure the format is there.
-    if (answers.format == 'backup') {
-      var followupQuestions = []
-      for (var i = 0; i < answers.numberOfBackupCodes; i++) {
-        followupQuestions.push({
-          type: 'input',
-          name: `backup[${i}]`,
-          message: `Enter the backup code piece ${i+1} of ${answers.numberOfBackupCodes}:`,
-          validate: function(value) {
-            var valid = value.match(/^[0-9a-fA-F]+$/) != null;
-            return valid || "Must be a valid hexadecimal number";
-          }
-        });
-      };
-      inquirer.prompt(followupQuestions).then(function(followupAnswers) {
-        delete answers.numberOfBackupCodes;
-        resolver(Object.assign({}, answers, followupAnswers));
-      });
-    } else {
-      resolver(answers);
+  var questionBackup = {
+    type: 'input',
+    name: 'backup[%i]',
+    message: "Enter the backup code piece %i of %i:",
+    validate: function(value) {
+      var valid = value.match(/^[0-9a-fA-F]+$/) != null;
+      return valid || "Must be a valid hexadecimal number";
+    },
+  };
+
+  inquirer.prompt(questionAction).then((answers) => {
+    res = merge(res, answers);
+    if (res.action == 'create') {
+      return inquirer.prompt(questionSeed);
+    } else if (res.action == 'retrieve') {
+      if (process.env.CHECKSUM) {
+        print("Found checksum in the $CHECKSUM environment variable: " + chalk.bold(process.env.CHECKSUM));
+        return Promise.resolve({checksum: process.env.CHECKSUM});
+      } else {
+        return inquirer.prompt([
+          questionChecksumConfirm,
+          when(questionChecksum, (answers) => {
+            return answers['checksumConfirm'];
+          }),
+        ]);
+      }
     }
+  }).then((answers) => {
+    res = merge(res, answers);
+    if (res.action == 'retrieve') {
+      return inquirer.prompt([
+        questionFormat,
+        when(questionSeed, (answers) => {
+          return answers['format'] == 'seed';
+        }),
+        when(questionNumberOfBackupPieces, (answers) => {
+          return answers['format'] == 'backup';
+        }),
+      ]);
+    }
+    return Promise.resolve({});
+  }).then((answers) => {
+    res = merge(res, answers);
+    if (res['numberOfBackupPieces']) {
+      var questions = [];
+      for (var i = 0; i < res['numberOfBackupPieces']; i++) {
+        questions.push(fill(questionBackup, {
+          'name': [i],
+          'message': [i+1, res['numberOfBackupPieces']],
+        }));
+      };
+      return inquirer.prompt(questions);
+    }
+    return Promise.resolve({});
+  }).then((answers) => {
+    res = merge(res, answers);
+    resolver(res);
   });
 
-  return new Promise(function(resolve, reject) {
+  return new Promise((resolve, reject) => {
     resolver = resolve;
     rejector = reject;
   });
@@ -152,8 +210,7 @@ var setup = function() {
     } else if (answers.action == 'retrieve') {
       if (answers.format == 'seed') {
         seed = Buffer.from(answers.seed);
-        if (process.env.CHECKSUM) {
-          print("Found checksum in the $CHECKSUM environment variable: " + chalk.bold(process.env.CHECKSUM));
+        if (answers.checksum) {
           printProgress("Comparing seed to checksum, this might take a while ... ");
           var checksum = calcChecksum(seed);
           print(chalk.dim("Done!"));
@@ -162,7 +219,7 @@ var setup = function() {
             seed = null;
           }
         } else {
-          print("No $CHECKSUM environment variable was found, continuing without checking against checksum.");
+          print("No checksum was provided, continuing without checking against checksum.");
         }
       } else if (answers.format == 'backup') {
         var n = answers.backup.join("").length;
@@ -178,11 +235,10 @@ var setup = function() {
             potentialSeeds.push(xor(Buffer.from(potentialCipher, 'hex'), Buffer.from(potentialRand, 'hex')));
           }
           potentialSeeds = [...new Set(potentialSeeds.map((x) => { return x.toString('hex') }))].map((x) => { return Buffer.from(x, 'hex') }); // A stupid unique.
-          if (process.env.CHECKSUM) {
-            print("Found checksum in the $CHECKSUM environment variable: " + chalk.bold(process.env.CHECKSUM));
+          if (answers.checksum) {
             printProgress("Comparing potential seeds to checksum, this might take a while ... ");
             for (var i = 0; i < potentialSeeds.length; i++) {
-              if (calcChecksum(potentialSeeds[i]) == process.env.CHECKSUM) {
+              if (calcChecksum(potentialSeeds[i]) == answers.checksum) {
                 seed = potentialSeeds[i];
                 break;
               }
