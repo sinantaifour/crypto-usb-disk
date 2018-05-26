@@ -80,14 +80,16 @@ var inputs = function() {
     message: "Do you have access to a checksum?",
   };
 
+  const validateChecksum = function(value) {
+    var valid = value.match(/^[0-9a-fA-F]+$/) != null && value.length == 64;
+    return valid || "Must be a valid hexadecimal number of 64 digits";
+  };
+
   const questionChecksum = {
     type: 'input',
     name: CHECKSUM,
     message: "Enter the checksum:",
-    validate: function(value) {
-      var valid = value.match(/^[0-9a-fA-F]+$/) != null && value.length == 64;
-      return valid || "Must be a valid hexadecimal number of 64 digits";
-    },
+    validate: validateChecksum,
   };
 
   const questionFormat = {
@@ -158,11 +160,15 @@ var inputs = function() {
   afterRetrieve.then(() => {
     var questions = [];
     if (process.env.CHECKSUM) {
-      // TODO: skip this if CHECKSUM doesn't pass the validation.
-      print("Found checksum in the $CHECKSUM environment variable", process.env.CHECKSUM);
-      var h = {}; h[CHECKSUM] = process.env.CHECKSUM;
-      res = merge(res, h);
-    } else {
+      if (validateChecksum(process.env.CHECKSUM) === true) {
+        var h = {}; h[CHECKSUM] = process.env.CHECKSUM;
+        res = merge(res, h);
+        print("Found checksum in the $CHECKSUM environment variable", res[CHECKSUM]);
+      } else {
+        print("Environment variable $CHECKSUM was set, but it contained an invalid value. Ignoring it.");
+      }
+    }
+    if (!res[CHECKSUM]) {
       questions = questions.concat([
         questionChecksumConfirm,
         when(questionChecksum, (answers) => {
