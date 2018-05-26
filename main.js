@@ -33,7 +33,13 @@ const calcChecksum = function(x, c) {
   return sha256(md5(sha1(c == 1 ? x : calcChecksum(x, (c || 3500) - 1))));
 };
 
+const ACTION = 'action', CREATE = 'create', RETRIEVE = 'retrieve';
+const FORMAT = 'format', SEED = 'seed', BACKUP = 'backup';
+const CHECKSUM = 'checksum';
+
 var promptsForSetup = function() {
+
+  const CHECKSUM_CONFIRM = 'checksumConfirm', NUMBER_OF_BACKUP_PIECES = 'numberOfBackupPieces';
 
   var resolver, rejector;
   var res = {};
@@ -54,31 +60,31 @@ var promptsForSetup = function() {
 
   var questionAction = {
     type: 'expand',
-    name: 'action',
+    name: ACTION,
     message: "What action are you interested in performing?",
     choices: [
       {
         key: 'c',
         name: "Create a new wallet",
-        value: 'create'
+        value: CREATE
       },
       {
         key: 'r',
         name: "Retrieve a wallet that already exists",
-        value: 'retrieve'
+        value: RETRIEVE
       },
     ],
   };
 
   var questionChecksumConfirm = {
     type: 'confirm',
-    name: 'checksumConfirm',
+    name: CHECKSUM_CONFIRM,
     message: "Do you have access to a checksum?",
   };
 
   var questionChecksum = {
     type: 'input',
-    name: 'checksum',
+    name: CHECKSUM,
     message: "Enter the checksum:",
     validate: function(value) {
       var valid = value.match(/^[0-9a-fA-F]+$/) != null && value.length == 64;
@@ -88,31 +94,31 @@ var promptsForSetup = function() {
 
   var questionFormat = {
     type: 'expand',
-    name: 'format',
+    name: FORMAT,
     message: "What is the source of secrets that you have access to?",
     choices: [
       {
         key: 's',
         name: "A seed (a memorized string)",
-        value: 'seed'
+        value: SEED,
       },
       {
         key: 'b',
         name: "A set of backup code pieces in hexadecimal format",
-        value: 'backup'
+        value: BACKUP,
       },
     ],
   };
 
   var questionSeed = {
     type: 'input',
-    name: 'seed',
+    name: SEED,
     message: "Enter the seed (a memorized string):",
   };
 
   var questionNumberOfBackupPieces = {
     type: 'input',
-    name: 'numberOfBackupPieces',
+    name: NUMBER_OF_BACKUP_PIECES,
     message: "How many backup code pieces do you have?",
     validate: function(value) {
       var number = parseInt(value);
@@ -124,7 +130,7 @@ var promptsForSetup = function() {
 
   var questionBackup = {
     type: 'input',
-    name: 'backup[%i]',
+    name: BACKUP + '[%i]',
     message: "Enter the backup code piece %i of %i:",
     validate: function(value) {
       var valid = value.match(/^[0-9a-fA-F]+$/) != null;
@@ -134,43 +140,43 @@ var promptsForSetup = function() {
 
   inquirer.prompt(questionAction).then((answers) => {
     res = merge(res, answers);
-    if (res.action == 'create') {
+    if (res[ACTION] == CREATE) {
       return inquirer.prompt(questionSeed);
-    } else if (res.action == 'retrieve') {
+    } else if (res[ACTION] == RETRIEVE) {
       if (process.env.CHECKSUM) {
         print("Found checksum in the $CHECKSUM environment variable: " + chalk.bold(process.env.CHECKSUM));
-        return Promise.resolve({checksum: process.env.CHECKSUM});
+        return Promise.resolve({checksum: process.env.CHECKSUM}); // TODO: Use the CHECKSUM const.
       } else {
         return inquirer.prompt([
           questionChecksumConfirm,
           when(questionChecksum, (answers) => {
-            return answers['checksumConfirm'];
+            return answers[CHECKSUM_CONFIRM];
           }),
         ]);
       }
     }
   }).then((answers) => {
     res = merge(res, answers);
-    if (res.action == 'retrieve') {
+    if (res[ACTION] == RETRIEVE) {
       return inquirer.prompt([
         questionFormat,
         when(questionSeed, (answers) => {
-          return answers['format'] == 'seed';
+          return answers[FORMAT] == SEED;
         }),
         when(questionNumberOfBackupPieces, (answers) => {
-          return answers['format'] == 'backup';
+          return answers[FORMAT] == BACKUP;
         }),
       ]);
     }
     return Promise.resolve({});
   }).then((answers) => {
     res = merge(res, answers);
-    if (res['numberOfBackupPieces']) {
+    if (res[NUMBER_OF_BACKUP_PIECES]) {
       var questions = [];
-      for (var i = 0; i < res['numberOfBackupPieces']; i++) {
+      for (var i = 0; i < res[NUMBER_OF_BACKUP_PIECES]; i++) {
         questions.push(fill(questionBackup, {
           'name': [i],
-          'message': [i+1, res['numberOfBackupPieces']],
+          'message': [i+1, res[NUMBER_OF_BACKUP_PIECES]],
         }));
       };
       return inquirer.prompt(questions);
@@ -178,6 +184,8 @@ var promptsForSetup = function() {
     return Promise.resolve({});
   }).then((answers) => {
     res = merge(res, answers);
+    delete res[CHECKSUM_CONFIRM];
+    delete res[NUMBER_OF_BACKUP_PIECES];
     resolver(res);
   });
 
@@ -189,7 +197,7 @@ var promptsForSetup = function() {
 };
 
 
-var setup = function() {
+var setup = function() { // TODO: use the consts.
 
   var resolver, rejector;
 
