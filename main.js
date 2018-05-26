@@ -152,6 +152,18 @@ var setup = function() {
     } else if (answers.action == 'retrieve') {
       if (answers.format == 'seed') {
         seed = Buffer.from(answers.seed);
+        if (process.env.CHECKSUM) {
+          print("Found checksum in the $CHECKSUM environment variable: " + chalk.bold(process.env.CHECKSUM));
+          printProgress("Comparing seed to checksum, this might take a while ... ");
+          var checksum = calcChecksum(seed);
+          print(chalk.dim("Done!"));
+          if (checksum != process.env.CHECKSUM) {
+            error("Seed does not match checksum!");
+            seed = null;
+          }
+        } else {
+          print("No $CHECKSUM environment variable was found, continuing without checking against checksum.");
+        }
       } else if (answers.format == 'backup') {
         var n = answers.backup.join("").length;
         if (n % 4 != 0) {
