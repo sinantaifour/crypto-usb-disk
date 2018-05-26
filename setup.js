@@ -59,16 +59,16 @@ var inputs = function() {
   const questionAction = {
     type: 'expand',
     name: ACTION,
-    message: "What action are you interested in performing?",
+    message: "What would you like to setup the wallet?",
     choices: [
       {
         key: 'c',
-        name: "Create a new wallet",
+        name: "Create a brand new empty wallet",
         value: CREATE
       },
       {
         key: 'r',
-        name: "Retrieve a wallet that already exists",
+        name: "Retrieve a wallet that was previously created",
         value: RETRIEVE
       },
     ],
