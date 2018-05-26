@@ -2,7 +2,8 @@
 const { yellow, red, dim, bold } = require('chalk');
 
 var merge = function(a, b) { return Object.assign({}, a, b); };
-var p = function (x) { process.stdout.write(Buffer.from(yellow(x))); };
+var p = function (x, k) { process.stdout.write(Buffer.from(k ? x : yellow(x))); };
+var error = function(x) { p(red.underline.bold("Error:") + " " + red.bold(x), true); };
 var print = function(x, y) {
   if (y) {
     p(x + ": " + bold(y) + "\n");
@@ -10,17 +11,11 @@ var print = function(x, y) {
     p(x + "\n");
   }
 };
-var error = function(x) { p(red.underline.bold("Error:") + " " + red.bold(x)); };
 var progress = function(x, f) {
   p(x + ", this might take a while... ");
   var res = f();
   print(dim("Done!"));
   return res;
-};
-var when = function(question, f) {
-  return merge(question, {
-    when: f,
-  });
 };
 var proxy = function() {
   var f;
@@ -31,9 +26,8 @@ var proxy = function() {
 
 module.exports = {
   merge: merge,
-  progress: progress,
-  print: print,
   error: error,
-  when: when,
+  print: print,
+  progress: progress,
   proxy, proxy,
 };

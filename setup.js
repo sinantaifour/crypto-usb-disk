@@ -1,12 +1,12 @@
 'use strict';
 const inquirer = require('inquirer');
 const crypto = require('crypto');
-const { bold } = require('chalk');
+const { bold, italic } = require('chalk');
 const sha1 = require('sha1');
 const sha256 = require('sha256');
 const md5 = require('md5');
 const { format } = require('util');
-const { merge, progress, print, error, when, fill, proxy } = require('./util');
+const { merge, error, print, progress, proxy } = require('./util');
 
 const xor = function(a, b) {
   var res = Buffer.alloc(a.length);
@@ -32,9 +32,11 @@ const calcChecksum = function(x, c) {
   return sha256(md5(sha1(c == 1 ? x : calcChecksum(x, (c || 3500) - 1))));
 };
 
+var mask = function(x) { return x; } // Overwritten if masking is needed.
+
 const ACTION = 'action', CREATE = 'create', RETRIEVE = 'retrieve';
 const FORMAT = 'format', SEED = 'seed', BACKUP = 'backup';
-const CHECKSUM = 'checksum';
+const CHECKSUM = 'checksum', MASK = 'mask';
 
 var inputs = function() {
 
@@ -43,7 +45,11 @@ var inputs = function() {
   var resolver, rejector;
   var res = {};
   var promise = new Promise((resolve, reject) => {
-    resolver = resolve;
+    resolver = function() {
+      delete res[CHECKSUM_CONFIRM];
+      delete res[NUMBER_OF_BACKUP_PIECES];
+      resolve(res);
+    };
     rejector = reject;
   });
 
@@ -52,9 +58,16 @@ var inputs = function() {
       if (answers) {
         res = merge(res, answers);
       }
-      return f(res);
+      return f();
     }
   };
+
+  var when = function(question, f) {
+    return merge(question, {
+      when: f,
+    });
+  };
+
 
   const questionAction = {
     type: 'expand',
@@ -72,6 +85,13 @@ var inputs = function() {
         value: RETRIEVE
       },
     ],
+  };
+
+  const questionMask = {
+    type: 'confirm',
+    name: MASK,
+    message: "Should secrets be masked from the screen?",
+    default: false,
   };
 
   const questionChecksumConfirm = {
@@ -110,10 +130,12 @@ var inputs = function() {
     ],
   };
 
-  const questionSeed = {
-    type: 'input',
-    name: SEED,
-    message: "Enter the seed (a memorized string):",
+  const questionSeed = function(mask) {
+    return {
+      type: mask ? 'password' : 'input',
+      name: SEED,
+      message: "Enter the seed (a memorized string):",
+    }
   };
 
   const questionNumberOfBackupPieces = {
@@ -128,9 +150,9 @@ var inputs = function() {
     filter: Number,
   };
 
-  const questionBackup = function(i, j) {
+  const questionBackup = function(i, j, mask) {
     return {
-      type: 'input',
+      type: mask ? 'password' : 'input',
       name: format(BACKUP + '[%i]', i),
       message: format("Enter the backup code piece %i of %i:", i + 1, j),
       validate: function(value) {
@@ -143,7 +165,7 @@ var inputs = function() {
   var afterCreate = proxy();
   var afterRetrieve = proxy();
 
-  inquirer.prompt(questionAction).then(mergeAndRun(() => {
+  inquirer.prompt([questionMask, questionAction]).then(mergeAndRun(() => {
     if (res[ACTION] == CREATE) {
       afterCreate.proceed();
     } else if (res[ACTION] == RETRIEVE) {
@@ -154,7 +176,7 @@ var inputs = function() {
   afterCreate.then(() => {
     var h = {}; h[FORMAT] = SEED;
     res = merge(res, h);
-    return inquirer.prompt(questionSeed);
+    return inquirer.prompt(questionSeed(res[MASK]));
   }).then(mergeAndRun(resolver));
 
   afterRetrieve.then(() => {
@@ -178,7 +200,7 @@ var inputs = function() {
     }
     questions = questions.concat([
       questionFormat,
-      when(questionSeed, (answers) => {
+      when(questionSeed(res[MASK]), (answers) => {
         return answers[FORMAT] == SEED;
       }),
       when(questionNumberOfBackupPieces, (answers) => {
@@ -188,12 +210,10 @@ var inputs = function() {
     return inquirer.prompt(questions);
   }).then(mergeAndRun(() => {
     var n = res[NUMBER_OF_BACKUP_PIECES];
-    delete res[CHECKSUM_CONFIRM];
-    delete res[NUMBER_OF_BACKUP_PIECES];
     if (n) {
       var questions = [];
       for (var i = 0; i < n; i++) {
-        questions.push(questionBackup(i, n));
+        questions.push(questionBackup(i, n, res[MASK]));
       };
       return inquirer.prompt(questions);
     } else {
@@ -224,7 +244,7 @@ var create = function(seed) {
     return crypto.randomBytes(seed.length);
   });
   var backup = xor(seed, rand).toString('hex') + rand.toString('hex');
-  print("Backup code, which can be divided", backup);
+  print("Backup code, which can be divided", mask(backup));
   return Promise.resolve(seed);
 };
 
@@ -286,7 +306,7 @@ var retrieveFromBackup = function(backup, checksum) {
     return Promise.resolve(potentialSeeds[0]);
   } else {
     print("There is more than one potential seed. A checksum would help to find the correct one automatically.");
-    var printable = potentialSeeds.map((x) => x.toString().replace(/[^\x20-\x7E]/g, "?"));
+    var printable = potentialSeeds.map((x) => mask(x.toString().replace(/[^\x20-\x7E]/g, "?")));
     return select("Select a seed (non-printable characters have been replaced):", printable).then((i) => {
       return potentialSeeds[i];
     });
@@ -298,6 +318,7 @@ var setup = function() {
   var promise = proxy();
 
   inputs().then((answers) => {
+    if (answers[MASK]) { mask = function() { return italic("[hidden]"); }; }
     if (answers[ACTION] == CREATE) {
       return create(Buffer.from(answers[SEED]));
     } else if (answers[ACTION] == RETRIEVE) {
@@ -309,9 +330,9 @@ var setup = function() {
     }
   }).then((seed) => {
     if (seed.toString().match(/^[\x20-\x7E]*$/)) {
-      print("Seed that will be used is", seed);
+      print("Seed that will be used is", mask(seed));
     } else {
-      print("Seed that will be used contains non-printable characters, it is roughly", seed.toString().replace(/[^\x20-\x7E]/g, "?"));
+      print("Seed that will be used contains non-printable characters, it is roughly", mask(seed.toString().replace(/[^\x20-\x7E]/g, "?")));
     }
     var checksum = progress("Calculating checksum of seed that will be used", () => {
       return calcChecksum(seed);
