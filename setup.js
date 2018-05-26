@@ -223,12 +223,8 @@ var create = function(seed) {
   var rand = progress("Collecting entropy to generate backup codes", () => {
     return crypto.randomBytes(seed.length);
   });
-  var checksum = progress("Calculating checksum", () => {
-    return calcChecksum(seed);
-  });
   var backup = xor(seed, rand).toString('hex') + rand.toString('hex');
   print("Backup code, which can be divided", backup);
-  print("Checksum is", checksum);
   return Promise.resolve(seed);
 };
 
@@ -313,10 +309,14 @@ var setup = function() {
     }
   }).then((seed) => {
     if (seed.toString().match(/^[\x20-\x7E]*$/)) {
-      print("Seed is", seed);
+      print("Seed that will be used is", seed);
     } else {
-      print("Seed contains non-printable characters, it is roughly", seed.toString().replace(/[^\x20-\x7E]/g, "?"));
+      print("Seed that will be used contains non-printable characters, it is roughly", seed.toString().replace(/[^\x20-\x7E]/g, "?"));
     }
+    var checksum = progress("Calculating checksum of seed that will be used", () => {
+      return calcChecksum(seed);
+    });
+    print("Checksum of seed that will be used is", checksum);
     promise.proceed(seed);
   });
 
