@@ -93,8 +93,8 @@ var promptsForSetup = function() {
     },
     validate: function(value) {
       var number = parseInt(value);
-      var valid = !isNaN(number) && number > 0 && number % 2 == 0;
-      return valid || "Must be a positive even integer";
+      var valid = !isNaN(number) && number > 0;
+      return valid || "Must be a positive integer";
     },
     filter: Number
   });
@@ -102,12 +102,6 @@ var promptsForSetup = function() {
   inquirer.prompt(questions).then(function(answers) {
     answers.format = answers.format || 'seed'; // Make sure the format is there.
     if (answers.format == 'backup') {
-      if (!process.env.CHECKSUM && answers.numberOfBackupCodes > 2) {
-        // Fail early if we're missing a checksum, to avoid burdening the user with writing all those strings.
-        error("A checksum is needed to find the right seed, you must set the $CHECKSUM environment variable");
-        rejector();
-        return;
-      }
       var followupQuestions = []
       for (var i = 0; i < answers.numberOfBackupCodes; i++) {
         followupQuestions.push({
@@ -152,37 +146,43 @@ var setup = function() {
       printProgress("Calculating checksum, this might take a while ... ");
       var checksum = calcChecksum(seed);
       print(chalk.dim("Done!"));
-      print("Backup code piece 1 of 2, which can be further divided: " + chalk.bold(xor(seed, rand).toString('hex')));
-      print("Backup code peice 2 of 2, which can be further divided: " + chalk.bold(rand.toString('hex')));
+      var backup = xor(seed, rand).toString('hex') + rand.toString('hex');
+      print("Backup code, which can be divided: " + chalk.bold(backup));
       print("Checksum is: " + chalk.bold(checksum));
     } else if (answers.action == 'retrieve') {
       if (answers.format == 'seed') {
         seed = Buffer.from(answers.seed);
       } else if (answers.format == 'backup') {
-        var n = answers.backup.length;
-        var permutations = permute(answers.backup);
-        var potentialSeeds = []
-        for (var i = 0; i < permutations.length; i++) {
-          var permutation = permutations[i];
-          var potentialCipher = permutation.slice(0, n/2).join("");
-          var potentialRand = permutation.slice(n/2, n).join("");
-          if (potentialCipher.length != potentialRand.length) continue;
-          potentialSeeds.push(xor(Buffer.from(potentialCipher, 'hex'), Buffer.from(potentialRand, 'hex')));
-        }
-        potentialSeeds = [...new Set(potentialSeeds.map((x) => { return x.toString('hex') }))].map((x) => { return Buffer.from(x, 'hex') }); // A stupid unique.
-        if (process.env.CHECKSUM) {
-          print("Found checksum in the $CHECKSUM environment variable: " + chalk.bold(process.env.CHECKSUM));
-          printProgress("Comparing potential seeds to checksum, this might take a while ... ");
-          for (var i = 0; i < potentialSeeds.length; i++) {
-            if (calcChecksum(potentialSeeds[i]) == process.env.CHECKSUM) {
-              seed = potentialSeeds[i];
-              break;
-            }
+        var n = answers.backup.join("").length;
+        if (n % 2 != 0) {
+          error("The number of hexadecimal is not even");
+        } else {
+          var permutations = permute(answers.backup);
+          var potentialSeeds = []
+          for (var i = 0; i < permutations.length; i++) {
+            var permutation = permutations[i].join("");
+            var potentialCipher = permutation.slice(0, n/2);
+            var potentialRand = permutation.slice(n/2, n);
+            potentialSeeds.push(xor(Buffer.from(potentialCipher, 'hex'), Buffer.from(potentialRand, 'hex')));
           }
-          print(chalk.dim("Done!"));
-        } else if (potentialSeeds.length == 1) {
-          print("There is only one potential seed, will continue with it eventhough there is no checksum to compare it against");
-          seed = potentialSeeds[0];
+          potentialSeeds = [...new Set(potentialSeeds.map((x) => { return x.toString('hex') }))].map((x) => { return Buffer.from(x, 'hex') }); // A stupid unique.
+          if (process.env.CHECKSUM) {
+            print("Found checksum in the $CHECKSUM environment variable: " + chalk.bold(process.env.CHECKSUM));
+            printProgress("Comparing potential seeds to checksum, this might take a while ... ");
+            for (var i = 0; i < potentialSeeds.length; i++) {
+              if (calcChecksum(potentialSeeds[i]) == process.env.CHECKSUM) {
+                seed = potentialSeeds[i];
+                break;
+              }
+            }
+            print(chalk.dim("Done!"));
+          } else if (potentialSeeds.length == 1) {
+            print("There is only one potential seed, will continue with it eventhough there is no checksum to compare it against");
+            seed = potentialSeeds[0];
+          } else {
+            // TODO: Allow the user to select.
+            error("There is more than one potential seed. A checksum is needed to find the right one, you must set the $CHECKSUM environment variable");
+          }
         }
       }
     }
