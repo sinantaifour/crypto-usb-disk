@@ -102,10 +102,9 @@ var promptsForSetup = function() {
   inquirer.prompt(questions).then(function(answers) {
     answers.format = answers.format || 'seed'; // Make sure the format is there.
     if (answers.format == 'backup') {
-      if (process.env.CHECKSUM) {
-        print("Found checksum: " + chalk.bold(process.env.CHECKSUM));
-      } else {
-        error("A checksum is needed to find the right seed, you must set the CHECKSUM environment variable");
+      if (!process.env.CHECKSUM && answers.numberOfBackupCodes > 2) {
+        // Fail early if we're missing a checksum, to avoid burdening the user with writing all those strings.
+        error("A checksum is needed to find the right seed, you must set the $CHECKSUM environment variable");
         reject();
         return;
       }
@@ -123,7 +122,7 @@ var promptsForSetup = function() {
       };
       inquirer.prompt(followupQuestions).then(function(followupAnswers) {
         delete answers.numberOfBackupCodes;
-        resolver(Object.assign({}, answers, followupAnswers, {checksum: process.env.CHECKSUM}));
+        resolver(Object.assign({}, answers, followupAnswers));
       });
     } else {
       resolver(answers);
@@ -143,7 +142,7 @@ var setup = function() {
   var resolver;
   var rejector;
 
-  print("Welcome to the Crypto USB Disk!");
+  print(chalk.bold("Welcome to the Crypto USB Disk! ") + "Make sure you only run this on an offline computer.");
   promptsForSetup().then(function(answers) {
     var seed;
     if (answers.action == 'create') {
@@ -163,7 +162,7 @@ var setup = function() {
       } else if (answers.format == 'backup') {
         var n = answers.backup.length;
         var permutations = permute(answers.backup);
-        var potentialSeeds = [];
+        var potentialSeeds = []
         for (var i = 0; i < permutations.length; i++) {
           var permutation = permutations[i];
           var potentialCipher = permutation.slice(0, n/2).join("");
@@ -171,18 +170,29 @@ var setup = function() {
           if (potentialCipher.length != potentialRand.length) continue;
           potentialSeeds.push(xor(Buffer.from(potentialCipher, 'hex'), Buffer.from(potentialRand, 'hex')));
         }
-        printProgress("Comparing potential seeds to checksum, this might take a while ... ");
-        for (var i = 0; i < potentialSeeds.length; i++) {
-          if (calcChecksum(potentialSeeds[i]) == answers.checksum) {
-            seed = potentialSeeds[i];
-            break;
+        potentialSeeds = [...new Set(potentialSeeds.map((x) => { return x.toString('hex') }))].map((x) => { return Buffer.from(x, 'hex') }); // A stupid unique.
+        if (process.env.CHECKSUM) {
+          print("Found checksum in the $CHECKSUM environment variable: " + chalk.bold(process.env.CHECKSUM));
+          printProgress("Comparing potential seeds to checksum, this might take a while ... ");
+          for (var i = 0; i < potentialSeeds.length; i++) {
+            if (calcChecksum(potentialSeeds[i]) == process.env.CHECKSUM) {
+              seed = potentialSeeds[i];
+              break;
+            }
           }
+          print(chalk.dim("Done!"));
+        } else if (potentialSeeds.length == 1) {
+          print("There is only one potential seed, will continue with it eventhough there is no checksum to compare it against");
+          seed = potentialSeeds[0];
         }
-        print(chalk.dim("Done!"));
       }
     }
     if (seed) {
-      print("Seed is: " + chalk.bold(seed));
+      if (seed.toString().match(/^[\x20-\x7E]*$/)) {
+        print("Seed is: " + chalk.bold(seed));
+      } else {
+        print("Seed contains non-printable characters, it is roughly: " + chalk.bold(seed.toString().replace(/[^\x20-\x7E]/g, "?")));
+      }
       resolver(seed);
     } else {
       error("Failed to retrieve seed");
