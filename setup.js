@@ -1,7 +1,7 @@
 'use strict';
 const inquirer = require('inquirer');
 const crypto = require('crypto');
-const chalk = require('chalk');
+const { dim, bold } = require('chalk');
 const sha1 = require('sha1');
 const sha256 = require('sha256');
 const md5 = require('md5');
@@ -165,7 +165,7 @@ var inputs = function() {
   afterRetrieve.then(() => {
     var questions = [];
     if (process.env.CHECKSUM) {
-      print("Found checksum in the $CHECKSUM environment variable: " + chalk.bold(process.env.CHECKSUM));
+      print("Found checksum in the $CHECKSUM environment variable: " + bold(process.env.CHECKSUM));
       var h = {}; h[CHECKSUM] = process.env.CHECKSUM;
       res = merge(res, h);
     } else {
@@ -206,44 +206,44 @@ var inputs = function() {
 };
 
 
-var setup = function() { // TODO: use the consts.
+var setup = function() {
 
   var resolver, rejector;
 
-  print(chalk.bold("Welcome to the Crypto USB Disk! ") + "Make sure you only run this on an offline computer.");
+  print(bold("Welcome to the Crypto USB Disk! ") + "Make sure you only run this on an offline computer.");
   inputs().then(function(answers) {
     var seed;
-    if (answers.action == 'create') {
-      seed = Buffer.from(answers.seed);
+    if (answers[ACTION] == CREATE) {
+      seed = Buffer.from(answers[SEED]);
       progress("Collecting entropy to generate backup codes, this might take a while ... ");
       var rand = crypto.randomBytes(seed.length);
-      print(chalk.dim("Done!"));
+      print(dim("Done!"));
       progress("Calculating checksum, this might take a while ... ");
       var checksum = calcChecksum(seed);
-      print(chalk.dim("Done!"));
+      print(dim("Done!"));
       var backup = xor(seed, rand).toString('hex') + rand.toString('hex');
-      print("Backup code, which can be divided: " + chalk.bold(backup));
-      print("Checksum is: " + chalk.bold(checksum));
-    } else if (answers.action == 'retrieve') {
-      if (answers.format == 'seed') {
-        seed = Buffer.from(answers.seed);
-        if (answers.checksum) {
+      print("Backup code, which can be divided: " + bold(backup));
+      print("Checksum is: " + bold(checksum));
+    } else if (answers[ACTION] == RETRIEVE) {
+      if (answers[FORMAT] == SEED) {
+        seed = Buffer.from(answers[SEED]);
+        if (answers[CHECKSUM]) {
           progress("Comparing seed to checksum, this might take a while ... ");
           var checksum = calcChecksum(seed);
-          print(chalk.dim("Done!"));
-          if (checksum != process.env.CHECKSUM) {
+          print(dim("Done!"));
+          if (checksum != answers[CHECKSUM]) {
             error("Seed does not match checksum!");
             seed = null;
           }
         } else {
           print("No checksum was provided, continuing without checking against checksum.");
         }
-      } else if (answers.format == 'backup') {
-        var n = answers.backup.join("").length;
+      } else if (answers[FORMAT] == BACKUP) {
+        var n = answers[BACKUP].join("").length;
         if (n % 4 != 0) {
           error("The number of hexadecimal digits is not divisible by four.");
         } else {
-          var permutations = permute(answers.backup);
+          var permutations = permute(answers[BACKUP]);
           var potentialSeeds = []
           for (var i = 0; i < permutations.length; i++) {
             var permutation = permutations[i].join("");
@@ -252,15 +252,15 @@ var setup = function() { // TODO: use the consts.
             potentialSeeds.push(xor(Buffer.from(potentialCipher, 'hex'), Buffer.from(potentialRand, 'hex')));
           }
           potentialSeeds = [...new Set(potentialSeeds.map((x) => { return x.toString('hex') }))].map((x) => { return Buffer.from(x, 'hex') }); // A stupid unique.
-          if (answers.checksum) {
+          if (answers[CHECKSUM]) {
             progress("Comparing potential seeds to checksum, this might take a while ... ");
             for (var i = 0; i < potentialSeeds.length; i++) {
-              if (calcChecksum(potentialSeeds[i]) == answers.checksum) {
+              if (calcChecksum(potentialSeeds[i]) == answers[CHECKSUM]) {
                 seed = potentialSeeds[i];
                 break;
               }
             }
-            print(chalk.dim("Done!"));
+            print(dim("Done!"));
           } else if (potentialSeeds.length == 1) {
             print("There is only one potential seed, will continue with it eventhough there is no checksum to compare it against.");
             seed = potentialSeeds[0];
@@ -273,9 +273,9 @@ var setup = function() { // TODO: use the consts.
     }
     if (seed) {
       if (seed.toString().match(/^[\x20-\x7E]*$/)) {
-        print("Seed is: " + chalk.bold(seed));
+        print("Seed is: " + bold(seed));
       } else {
-        print("Seed contains non-printable characters, it is roughly: " + chalk.bold(seed.toString().replace(/[^\x20-\x7E]/g, "?")));
+        print("Seed contains non-printable characters, it is roughly: " + bold(seed.toString().replace(/[^\x20-\x7E]/g, "?")));
       }
       resolver(seed);
     } else {
