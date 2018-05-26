@@ -1,12 +1,12 @@
 'use strict';
 const inquirer = require('inquirer');
 const crypto = require('crypto');
-const { dim, bold } = require('chalk');
+const { bold } = require('chalk');
 const sha1 = require('sha1');
 const sha256 = require('sha256');
 const md5 = require('md5');
 const { format } = require('util');
-const { merge, progress, print, error, when, fill } = require('./util');
+const { merge, progress, print, error, when, fill, proxy } = require('./util');
 
 const xor = function(a, b) {
   var res = Buffer.alloc(a.length);
@@ -54,13 +54,6 @@ var inputs = function() {
       }
       return f(res);
     }
-  };
-
-  var newProxyPromise = function() {
-    var f;
-    var promise = new Promise((r, _) => { f = r; });
-    promise.proceed = function() { f(); };
-    return promise;
   };
 
   const questionAction = {
@@ -145,8 +138,8 @@ var inputs = function() {
     };
   };
 
-  var afterCreate = newProxyPromise();
-  var afterRetrieve = newProxyPromise();
+  var afterCreate = proxy();
+  var afterRetrieve = proxy();
 
   inquirer.prompt(questionAction).then(mergeAndRun(() => {
     if (res[ACTION] == CREATE) {
@@ -165,7 +158,8 @@ var inputs = function() {
   afterRetrieve.then(() => {
     var questions = [];
     if (process.env.CHECKSUM) {
-      print("Found checksum in the $CHECKSUM environment variable: " + bold(process.env.CHECKSUM));
+      // TODO: skip this if CHECKSUM doesn't pass the validation.
+      print("Found checksum in the $CHECKSUM environment variable", process.env.CHECKSUM);
       var h = {}; h[CHECKSUM] = process.env.CHECKSUM;
       res = merge(res, h);
     } else {
@@ -205,89 +199,106 @@ var inputs = function() {
 
 };
 
+var create = function(seed) {
+  var rand = progress("Collecting entropy to generate backup codes", () => {
+    return crypto.randomBytes(seed.length);
+  });
+  var checksum = progress("Calculating checksum", () => {
+    return calcChecksum(seed);
+  });
+  var backup = xor(seed, rand).toString('hex') + rand.toString('hex');
+  print("Backup code, which can be divided", backup);
+  print("Checksum is", checksum);
+  return Promise.resolve(seed);
+};
+
+var retrieveFromSeed = function(seed, checksum) {
+  if (checksum) {
+    var actualChecksum = progress("Matching seed to checksum", () => {
+      return calcChecksum(seed);
+    });
+    if (checksum != actualChecksum) {
+      error("Seed does not match checksum!");
+      return Promise.reject();
+    }
+  } else {
+    print("No checksum was provided, continuing without checking against checksum.");
+  }
+  return Promise.resolve(seed);
+};
+
+var retrieveFromBackup = function(backup, checksum) {
+
+  var unique = function(a) { // A stupid unique for Buffers.
+    return [...new Set(a.map((x) => {
+      return x.toString('hex')
+    }))].map((x) => {
+      return Buffer.from(x, 'hex')
+    });
+  };
+
+  var n = backup.join("").length;
+  if (n % 4 != 0) {
+    error("The number of hexadecimal digits is not divisible by four.");
+    return Promise.reject();
+  }
+  var permutations = permute(backup);
+  var potentialSeeds = [];
+  for (var i = 0; i < permutations.length; i++) {
+    var permutation = permutations[i].join("");
+    var potentialCipher = permutation.slice(0, n/2);
+    var potentialRand = permutation.slice(n/2, n);
+    potentialSeeds.push(xor(Buffer.from(potentialCipher, 'hex'), Buffer.from(potentialRand, 'hex')));
+  }
+  potentialSeeds = unique(potentialSeeds);
+  if (checksum) {
+    var seed = progress("Matching potential seeds against checksum", function() {
+      for (var i = 0; i < potentialSeeds.length; i++) {
+        if (calcChecksum(potentialSeeds[i]) == checksum) {
+          return potentialSeeds[i];
+        }
+      }
+    });
+    if (seed) {
+      return Promise.resolve(seed);
+    } else {
+      error("None of the potential seeds match the checksum.");
+      return Promise.reject();
+    }
+  } else if (potentialSeeds.length == 1) {
+    print("There is only one potential seed, will continue with it eventhough there is no checksum to match it against.");
+    return Promise.resolve(potentialSeeds[0]);
+  } else {
+    // TODO: Allow the user to select.
+    error("There is more than one potential seed. A checksum is needed to find the right one.");
+    return Promise.reject();
+  }
+};
 
 var setup = function() {
 
-  var resolver, rejector;
+  var promise = proxy();
 
-  print(bold("Welcome to the Crypto USB Disk! ") + "Make sure you only run this on an offline computer.");
-  inputs().then(function(answers) {
-    var seed;
+  inputs().then((answers) => {
     if (answers[ACTION] == CREATE) {
-      seed = Buffer.from(answers[SEED]);
-      progress("Collecting entropy to generate backup codes, this might take a while ... ");
-      var rand = crypto.randomBytes(seed.length);
-      print(dim("Done!"));
-      progress("Calculating checksum, this might take a while ... ");
-      var checksum = calcChecksum(seed);
-      print(dim("Done!"));
-      var backup = xor(seed, rand).toString('hex') + rand.toString('hex');
-      print("Backup code, which can be divided: " + bold(backup));
-      print("Checksum is: " + bold(checksum));
+      return create(Buffer.from(answers[SEED]));
     } else if (answers[ACTION] == RETRIEVE) {
       if (answers[FORMAT] == SEED) {
-        seed = Buffer.from(answers[SEED]);
-        if (answers[CHECKSUM]) {
-          progress("Comparing seed to checksum, this might take a while ... ");
-          var checksum = calcChecksum(seed);
-          print(dim("Done!"));
-          if (checksum != answers[CHECKSUM]) {
-            error("Seed does not match checksum!");
-            seed = null;
-          }
-        } else {
-          print("No checksum was provided, continuing without checking against checksum.");
-        }
+        return retrieveFromSeed(Buffer.from(answers[SEED]), answers[CHECKSUM]);
       } else if (answers[FORMAT] == BACKUP) {
-        var n = answers[BACKUP].join("").length;
-        if (n % 4 != 0) {
-          error("The number of hexadecimal digits is not divisible by four.");
-        } else {
-          var permutations = permute(answers[BACKUP]);
-          var potentialSeeds = []
-          for (var i = 0; i < permutations.length; i++) {
-            var permutation = permutations[i].join("");
-            var potentialCipher = permutation.slice(0, n/2);
-            var potentialRand = permutation.slice(n/2, n);
-            potentialSeeds.push(xor(Buffer.from(potentialCipher, 'hex'), Buffer.from(potentialRand, 'hex')));
-          }
-          potentialSeeds = [...new Set(potentialSeeds.map((x) => { return x.toString('hex') }))].map((x) => { return Buffer.from(x, 'hex') }); // A stupid unique.
-          if (answers[CHECKSUM]) {
-            progress("Comparing potential seeds to checksum, this might take a while ... ");
-            for (var i = 0; i < potentialSeeds.length; i++) {
-              if (calcChecksum(potentialSeeds[i]) == answers[CHECKSUM]) {
-                seed = potentialSeeds[i];
-                break;
-              }
-            }
-            print(dim("Done!"));
-          } else if (potentialSeeds.length == 1) {
-            print("There is only one potential seed, will continue with it eventhough there is no checksum to compare it against.");
-            seed = potentialSeeds[0];
-          } else {
-            // TODO: Allow the user to select.
-            error("There is more than one potential seed. A checksum is needed to find the right one, you must set the $CHECKSUM environment variable.");
-          }
-        }
+        return retrieveFromBackup(answers[BACKUP], answers[CHECKSUM]);
       }
     }
-    if (seed) {
-      if (seed.toString().match(/^[\x20-\x7E]*$/)) {
-        print("Seed is: " + bold(seed));
-      } else {
-        print("Seed contains non-printable characters, it is roughly: " + bold(seed.toString().replace(/[^\x20-\x7E]/g, "?")));
-      }
-      resolver(seed);
+  }).then((seed) => {
+    if (seed.toString().match(/^[\x20-\x7E]*$/)) {
+      print("Seed is", seed);
     } else {
-      error("Failed to retrieve seed.");
-      rejector();
+      print("Seed contains non-printable characters, it is roughly", seed.toString().replace(/[^\x20-\x7E]/g, "?"));
     }
+    promise.proceed(seed);
   });
 
-  return new Promise(function(resolve, reject) {
-    resolver = resolve;
-    rejector = reject;
-  });
+  return promise;
 
 };
 
