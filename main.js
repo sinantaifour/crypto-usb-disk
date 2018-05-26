@@ -105,7 +105,7 @@ var promptsForSetup = function() {
       if (!process.env.CHECKSUM && answers.numberOfBackupCodes > 2) {
         // Fail early if we're missing a checksum, to avoid burdening the user with writing all those strings.
         error("A checksum is needed to find the right seed, you must set the $CHECKSUM environment variable");
-        reject();
+        rejector();
         return;
       }
       var followupQuestions = []
@@ -139,8 +139,7 @@ var promptsForSetup = function() {
 
 var setup = function() {
 
-  var resolver;
-  var rejector;
+  var resolver, rejector;
 
   print(chalk.bold("Welcome to the Crypto USB Disk! ") + "Make sure you only run this on an offline computer.");
   promptsForSetup().then(function(answers) {
