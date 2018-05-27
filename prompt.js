@@ -43,7 +43,7 @@ module.exports = new (function() {
     return prompt({
       type: 'expand',
       name: QUESTION,
-      message: "What would you like to setup the wallet?",
+      message: message,
       choices: Object.entries(choices).map((kv) => {
         return {
           key: kv[0][0],

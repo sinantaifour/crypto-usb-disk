@@ -1,7 +1,7 @@
 'use strict';
 const { yellow, red, green, dim, bold } = require('chalk');
 
-const PROMPT = green(">") + " ";
+const PROMPT = green("<") + " ";
 
 var p = function (x, p, c) { process.stdout.write(Buffer.from((p ? "" : PROMPT) + (c ? x : yellow(x)))); };
 var error = function(x) { p(red.underline.bold("Error:") + " " + red.bold(x) + "\n", false, true); };

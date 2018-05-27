@@ -83,7 +83,7 @@ var setup = function() {
     var selectedCreate = proxy();
     var selectedRetrieve = proxy();
 
-    prompt.options("What would you like to setup the wallet?", {
+    prompt.options("How would you like to setup the wallet?", {
       'create': "Create a brand new empty wallet",
       'retrieve': "Retrieve a wallet that was previously created",
     }).then((res) => {
@@ -95,7 +95,7 @@ var setup = function() {
     });
 
     selectedCreate.then(() => {
-      return prompt.input("Enter the seed (a memorized string):");
+      return prompt.input("Enter the seed (a memorized string):"); // TODO: non-zero-length.
     }).then((res) => {
       seed = Buffer.from(res);
       var rand = progress("Collecting entropy to generate backup codes", () => {
@@ -156,7 +156,7 @@ var setup = function() {
     });
 
     selectedSeed.then(() => {
-      return prompt.input("Enter the seed (a memorized string):");
+      return prompt.input("Enter the seed (a memorized string):"); // TODO: non-zero-length.
     }).then((res) => {
       seed = Buffer.from(res);
       if (checksum) {
