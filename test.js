@@ -8,6 +8,7 @@ const print = console.log;
 // TODO: check paths that use environment variables too (or maybe don't use them!)
 // TODO: a test that a generate backup code actually can restore.
 // TODO: make tests timeout.
+// TODO: make exit code of this script be non-zero if a test fails.
 
 var Test = function(name, inputs, asserts) {
 
@@ -161,7 +162,7 @@ Promise.resolve().then(() => {
     "wallet retrieval from a seed with an incorrect checksum",
     ["r", "y", "e9c4ec051d956791c7323a090a022d559c7dcf122ef9152b0e9171a04ccf800d", "s", "hellothere"],
     [
-      [/error: seed does not match checksum!/i, /.+/],
+      [/error: seed does not match checksum/i, /.+/],
       [/error: failed to setup/i, /.+/],
     ]
   ).getWaiter();
@@ -216,7 +217,7 @@ Promise.resolve().then(() => {
     "wallet retrieval from a multi-piece backup with incorrect number of digits",
     ["r", "n", "b", "4", "1135659", "d9f793bfd1", "aa0655d00effa", "115e9176c"],
     [
-      [/error: the number of hexadecimal digits is not divisible by four./i, /.+/],
+      [/error: the number of hexadecimal digits is not divisible by four/i, /.+/],
       [/error: failed to setup/i, /.+/],
     ]
   ).getWaiter();
