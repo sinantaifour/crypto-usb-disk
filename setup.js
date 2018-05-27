@@ -13,8 +13,6 @@ var setup = function() {
   const SKIP = new Error("Skip the chain");
   const SKIPPABLE = function(err) { if(err != SKIP) { throw err; } };
 
-  var seed, checksum, potentialSeeds;
-
   var unique_ = function(a) { // A stupid unique for Buffers.
     return [...new Set(a.map((x) => {
       return x.toString('hex')
@@ -23,7 +21,7 @@ var setup = function() {
     });
   };
 
-  var printSeed_ = function() {
+  var printSeed_ = function(seed) {
     if (isPrintable_(seed)) {
       print("Seed that will be used is", seed);
     } else {
@@ -74,9 +72,11 @@ var setup = function() {
 
   var run = function() {
 
+    var seed, checksum, potentialSeeds;
+
     var promise = proxy();
     var done = function() {
-      printSeed_();
+      printSeed_(seed);
       promise.resolve(seed);
     };
 
