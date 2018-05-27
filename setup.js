@@ -8,6 +8,11 @@ const md5 = require('md5');
 const { format } = require('util');
 const { merge, error, print, progress, proxy } = require('./util');
 
+// TODO: turn this file into an object. No need to pass answers around, set
+// on the object directly. Also no need to split into collection of inputs
+// then running, can be done an interlaced fashion (and share some decision
+// logic therefore).
+
 const xor = function(a, b) {
   var res = Buffer.alloc(a.length);
   for (var i = 0; i < a.length; i++) {
@@ -97,7 +102,7 @@ var inputs = function() {
   const questionChecksumConfirm = {
     type: 'confirm',
     name: CHECKSUM_CONFIRM,
-    message: "Do you have access to a checksum?",
+    message: "Do you have the checksum of the seed you will use?",
   };
 
   const validateChecksum = function(value) {

@@ -8,6 +8,8 @@ print("|" + bold("          Welcome to the Crypto USB Disk!            ") + "|")
 print(          "| Make sure you only run this on an offline computer. |");
 print(          "+-----------------------------------------------------+");
 
+// TODO: test if online or not.
+
 setup().then((seed) => {
   // TODO: Continue.
 });
