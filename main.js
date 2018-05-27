@@ -1,6 +1,6 @@
 'use strict';
 const { bold } = require('chalk');
-const { merge, progress, print, error, when, fill, proxy } = require('./util');
+const { error, print, progress, proxy } = require('./util');
 const setup = require('./setup');
 
 print(          "+-----------------------------------------------------+");
@@ -12,4 +12,8 @@ print(          "+-----------------------------------------------------+");
 
 setup().then((seed) => {
   // TODO: Continue.
+  console.log(seed);
+}).catch((err) => {
+  error("Failed to setup, quiting ...");
+  // TODO: exit with non-zero exit code.
 });
