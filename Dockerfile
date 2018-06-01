@@ -9,6 +9,6 @@ RUN apt-get update \
     && apt-get remove -y build-essential git curl python make \
     && apt-get autoremove -y && apt-get autoclean -y \
     && rm -rf /var/lib/apt/lists/*
-COPY main.js setup.js prompt.js util.js /root/
 RUN cd /root && npm install inquirer@5.2.0 chalk@2.4.1 sha1@1.1.1 sha256@0.2.0 md5@2.2.1
+COPY main.js setup.js prompt.js util.js test.js /root/
 CMD ["node", "/root/main.js"]

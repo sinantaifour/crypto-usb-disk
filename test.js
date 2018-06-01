@@ -32,7 +32,7 @@ var Test = function(name, inputs, asserts) {
   });
 
   var start = function() {
-    cmd = spawn('node', ['./main.js']);
+    cmd = spawn('node', [__dirname + '/main.js']);
 
     cmd.stdin.setEncoding('utf-8');
 
